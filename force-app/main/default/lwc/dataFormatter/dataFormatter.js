@@ -98,16 +98,19 @@ export default class DataFormatter extends LightningElement {
     capitalizeWords(text) {
         if (!text) return '';
 
-        return text.replace(/\b\w/g, char => char.toUpperCase());
+        return text.replace(/\b\w/g, (char) => char.toUpperCase());
     }
 
     @api
-    sanitizeHtml(html) {
-        if (!html) return '';
+    sanitizeText(text) {
+        if (!text) return '';
 
-        const div = document.createElement('div');
-        div.textContent = html;
-        return div.innerHTML;
+        return text
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#x27;')
+            .replace(/\//g, '&#x2F;');
     }
 
     _getDateFormatOptions(format) {
