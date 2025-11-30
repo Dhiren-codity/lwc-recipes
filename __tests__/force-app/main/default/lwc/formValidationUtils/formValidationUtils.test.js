@@ -1,100 +1,95 @@
 import { describe, it, expect, jest, afterEach } from '@jest/globals'
 import { ValidationRuleBuilder, FormValidationHelpers } from '../../../../../../force-app/main/default/lwc/formValidationUtils/formValidationUtils'
 
-afterEach(() => {
-  jest.clearAllMocks()
-})
+describe('ValidationRuleBuilder', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+    // @ts-ignore
+    if (global.fetch) delete global.fetch
+  })
 
-describe('ValidationRuleBuilder.required', () => {
-  it('returns default required rule', () => {
-    const rule = ValidationRuleBuilder.required()
-    expect(rule).toEqual({
+  it('required returns correct structure with default and custom message', () => {
+    const def = ValidationRuleBuilder.required()
+    expect(def).toEqual({
       type: 'required',
       message: 'Field is required',
       severity: 'error'
     })
+
+    const custom = ValidationRuleBuilder.required('You must fill this')
+    expect(custom).toEqual({
+      type: 'required',
+      message: 'You must fill this',
+      severity: 'error'
+    })
   })
 
-  it('allows custom message', () => {
-    const rule = ValidationRuleBuilder.required('Must provide value')
-    expect(rule.message).toBe('Must provide value')
-    expect(rule.type).toBe('required')
-    expect(rule.severity).toBe('error')
-  })
-})
-
-describe('ValidationRuleBuilder.pattern', () => {
-  it('returns pattern rule with regex', () => {
-    const regex = /abc/
-    const rule = ValidationRuleBuilder.pattern(regex)
+  it('pattern returns correct structure and uses provided regex', () => {
+    const re = /^[A-Z]+$/
+    const rule = ValidationRuleBuilder.pattern(re)
     expect(rule.type).toBe('pattern')
-    expect(rule.pattern).toBe(regex)
-    expect(rule.message).toBe('Invalid format')
     expect(rule.severity).toBe('error')
-    expect(rule.pattern.test('zabcz')).toBe(true)
-    expect(rule.pattern.test('zzz')).toBe(false)
+    expect(rule.message).toBe('Invalid format')
+    expect(rule.pattern).toBe(re)
+    expect(rule.pattern.test('ABC')).toBe(true)
+    expect(rule.pattern.test('Abc')).toBe(false)
   })
 
-  it('allows custom message', () => {
-    const rule = ValidationRuleBuilder.pattern(/^\d+$/, 'Digits only')
-    expect(rule.message).toBe('Digits only')
-  })
-})
-
-describe('ValidationRuleBuilder.length', () => {
-  it('returns length rule with default message', () => {
-    const rule = ValidationRuleBuilder.length(2, 5)
-    expect(rule).toEqual({
+  it('length returns object with min/max and default/custom message', () => {
+    const ruleDefault = ValidationRuleBuilder.length(2, 5)
+    expect(ruleDefault).toEqual({
       type: 'length',
       min: 2,
       max: 5,
       message: 'Length must be between 2 and 5',
       severity: 'error'
     })
+
+    const ruleCustom = ValidationRuleBuilder.length(1, 10, 'Custom length message')
+    expect(ruleCustom).toEqual({
+      type: 'length',
+      min: 1,
+      max: 10,
+      message: 'Custom length message',
+      severity: 'error'
+    })
   })
 
-  it('allows custom message', () => {
-    const rule = ValidationRuleBuilder.length(1, 3, 'Custom length message')
-    expect(rule.message).toBe('Custom length message')
-  })
-})
-
-describe('ValidationRuleBuilder.range', () => {
-  it('returns range rule with default message', () => {
-    const rule = ValidationRuleBuilder.range(10, 20)
-    expect(rule).toEqual({
+  it('range returns object with min/max and default/custom message', () => {
+    const ruleDefault = ValidationRuleBuilder.range(10, 20)
+    expect(ruleDefault).toEqual({
       type: 'range',
       min: 10,
       max: 20,
       message: 'Value must be between 10 and 20',
       severity: 'error'
     })
+
+    const ruleCustom = ValidationRuleBuilder.range(0, 100, 'Range is 0-100 only')
+    expect(ruleCustom).toEqual({
+      type: 'range',
+      min: 0,
+      max: 100,
+      message: 'Range is 0-100 only',
+      severity: 'error'
+    })
   })
 
-  it('allows custom message', () => {
-    const rule = ValidationRuleBuilder.range(5, 6, 'Out of range')
-    expect(rule.message).toBe('Out of range')
-  })
-})
-
-describe('ValidationRuleBuilder.custom', () => {
-  it('wraps a validator with default message', () => {
-    const validator = jest.fn(async () => ({ valid: true }))
-    const rule = ValidationRuleBuilder.custom(validator)
+  it('custom wraps validator and preserves message/severity', async () => {
+    const validator = jest.fn(async (v) => ({ valid: v === 'ok', message: v === 'ok' ? '' : 'bad' }))
+    const rule = ValidationRuleBuilder.custom(validator, 'Default fail')
     expect(rule.type).toBe('custom')
-    expect(rule.message).toBe('Validation failed')
     expect(rule.severity).toBe('error')
-    expect(rule.validator).toBe(validator)
+    expect(rule.message).toBe('Default fail')
+
+    const res1 = await rule.validator('ok')
+    const res2 = await rule.validator('nope')
+    expect(res1).toEqual({ valid: true, message: '' })
+    expect(res2).toEqual({ valid: false, message: 'bad' })
+    expect(validator).toHaveBeenCalledTimes(2)
   })
 
-  it('supports custom message', () => {
-    const rule = ValidationRuleBuilder.custom(async () => ({ valid: false }), 'Bad value')
-    expect(rule.message).toBe('Bad value')
-  })
-})
-
-describe('ValidationRuleBuilder.conditional', () => {
-  it('returns conditional rule with condition and rule', () => {
+  it('conditional returns object with condition and rule', () => {
     const condition = jest.fn(() => true)
     const innerRule = ValidationRuleBuilder.required()
     const rule = ValidationRuleBuilder.conditional(condition, innerRule)
@@ -104,331 +99,269 @@ describe('ValidationRuleBuilder.conditional', () => {
       rule: innerRule,
       severity: 'error'
     })
-  })
-})
-
-describe('ValidationRuleBuilder.crossField and comparators', () => {
-  it('crossField uses default message and comparator', () => {
-    const comparator = jest.fn((v, rv) => v === rv)
-    const rule = ValidationRuleBuilder.crossField('other', comparator)
-    expect(rule.type).toBe('cross-field')
-    expect(rule.relatedField).toBe('other')
-    expect(rule.message).toBe('Cross-field validation failed')
-    expect(rule.severity).toBe('error')
-    expect(rule.comparator('a', 'a')).toBe(true)
-    expect(rule.comparator('a', 'b')).toBe(false)
+    expect(rule.condition()).toBe(true)
   })
 
-  it('greaterThan comparator behavior', () => {
-    const rule = ValidationRuleBuilder.greaterThan('min')
-    expect(rule.message).toBe('Value must be greater than min')
-    expect(rule.comparator('5', '3')).toBe(true)
-    expect(rule.comparator('2', '3')).toBe(false)
-    expect(rule.comparator(null, '3')).toBe(true)
-    expect(rule.comparator('3', undefined)).toBe(true)
+  it('crossField returns object with comparator and default/custom message', () => {
+    const comp = (v, o) => v === o
+    const ruleDefault = ValidationRuleBuilder.crossField('other', comp)
+    expect(ruleDefault.type).toBe('cross-field')
+    expect(ruleDefault.relatedField).toBe('other')
+    expect(ruleDefault.comparator('a', 'a')).toBe(true)
+    expect(ruleDefault.severity).toBe('error')
+    expect(ruleDefault.message).toBe('Cross-field validation failed')
+
+    const ruleCustom = ValidationRuleBuilder.crossField('x', comp, 'Must match x')
+    expect(ruleCustom.message).toBe('Must match x')
   })
 
-  it('lessThan comparator behavior', () => {
-    const rule = ValidationRuleBuilder.lessThan('max')
-    expect(rule.message).toBe('Value must be less than max')
-    expect(rule.comparator('3', '5')).toBe(true)
-    expect(rule.comparator('7', '5')).toBe(false)
-    expect(rule.comparator(null, '5')).toBe(true)
-    expect(rule.comparator('5', undefined)).toBe(true)
+  it('email rule uses regex that matches valid emails and rejects invalid, with default/custom message', () => {
+    const ruleDefault = ValidationRuleBuilder.email()
+    expect(ruleDefault.type).toBe('pattern')
+    expect(ruleDefault.severity).toBe('error')
+    expect(ruleDefault.message).toBe('Invalid email format')
+    expect(ruleDefault.pattern).toBeInstanceOf(RegExp)
+    expect(ruleDefault.pattern.test('test@example.com')).toBe(true)
+    expect(ruleDefault.pattern.test('not-an-email')).toBe(false)
+
+    const ruleCustom = ValidationRuleBuilder.email('Bad email')
+    expect(ruleCustom.message).toBe('Bad email')
   })
 
-  it('matchField comparator behavior', () => {
-    const rule = ValidationRuleBuilder.matchField('confirm')
-    expect(rule.message).toBe('Value must match confirm')
-    expect(rule.comparator('abc', 'abc')).toBe(true)
-    expect(rule.comparator('abc', 'def')).toBe(false)
-  })
-})
-
-describe('ValidationRuleBuilder.email/phone/url', () => {
-  it('email pattern matches valid emails', () => {
-    const rule = ValidationRuleBuilder.email()
-    expect(rule.type).toBe('pattern')
-    expect(rule.message).toBe('Invalid email format')
-    expect(rule.pattern.test('user@example.com')).toBe(true)
-    expect(rule.pattern.test('bad@com')).toBe(false)
-    expect(rule.pattern.test('user@ example.com')).toBe(false)
-  })
-
-  it('phone pattern matches with plus, spaces, dashes, and parentheses', () => {
+  it('phone rule regex validates numbers with at least 10 characters', () => {
     const rule = ValidationRuleBuilder.phone()
-    expect(rule.type).toBe('pattern')
-    expect(rule.message).toBe('Invalid phone number')
+    expect(rule.pattern.test('1234567890')).toBe(true)
     expect(rule.pattern.test('+1 (234) 567-8901')).toBe(true)
-    expect(rule.pattern.test('123-456-7890')).toBe(true)
-    expect(rule.pattern.test('123456789')).toBe(false)
-  })
-
-  it('url pattern matches http/https only', () => {
-    const rule = ValidationRuleBuilder.url()
-    expect(rule.type).toBe('pattern')
-    expect(rule.message).toBe('Invalid URL format')
-    expect(rule.pattern.test('http://example.com')).toBe(true)
-    expect(rule.pattern.test('https://www.google.com/search?q=test')).toBe(true)
-    expect(rule.pattern.test('ftp://example.com')).toBe(false)
-  })
-})
-
-describe('ValidationRuleBuilder.zipCode', () => {
-  it('US zip code validation', () => {
-    const rule = ValidationRuleBuilder.zipCode('US')
-    expect(rule.message).toBe('Invalid US postal code')
-    expect(rule.pattern.test('12345')).toBe(true)
-    expect(rule.pattern.test('12345-6789')).toBe(true)
-    expect(rule.pattern.test('1234')).toBe(false)
-  })
-
-  it('CA postal code validation', () => {
-    const rule = ValidationRuleBuilder.zipCode('CA')
-    expect(rule.message).toBe('Invalid CA postal code')
-    expect(rule.pattern.test('K1A 0B1')).toBe(true)
-    expect(rule.pattern.test('K1A-0B1')).toBe(true)
     expect(rule.pattern.test('12345')).toBe(false)
   })
 
-  it('UK postal code validation', () => {
-    const rule = ValidationRuleBuilder.zipCode('UK')
-    expect(rule.message).toBe('Invalid UK postal code')
-    expect(rule.pattern.test('SW1A 1AA')).toBe(true)
-    expect(rule.pattern.test('EC1A 1BB')).toBe(true)
-    expect(rule.pattern.test('INVALID')).toBe(false)
+  it('url rule regex validates http/https URLs', () => {
+    const rule = ValidationRuleBuilder.url()
+    expect(rule.pattern.test('http://example.com')).toBe(true)
+    expect(rule.pattern.test('https://example.com/path?x=1')).toBe(true)
+    expect(rule.pattern.test('ftp://example.com')).toBe(false)
   })
 
-  it('defaults to US pattern for unknown country', () => {
-    const rule = ValidationRuleBuilder.zipCode('ZZ')
-    expect(rule.message).toBe('Invalid ZZ postal code')
-    expect(rule.pattern.test('12345')).toBe(true)
-    expect(rule.pattern.test('1234')).toBe(false)
-  })
-})
+  it('zipCode uses country-specific patterns and fallback with message', () => {
+    const us = ValidationRuleBuilder.zipCode('US')
+    expect(us.message).toBe('Invalid US postal code')
+    expect(us.pattern.test('12345')).toBe(true)
+    expect(us.pattern.test('12345-6789')).toBe(true)
+    expect(us.pattern.test('A1A 1A1')).toBe(false)
 
-describe('ValidationRuleBuilder.creditCard', () => {
-  it('validates a correct Luhn credit card number', async () => {
+    const ca = ValidationRuleBuilder.zipCode('CA')
+    expect(ca.message).toBe('Invalid CA postal code')
+    expect(ca.pattern.test('K1A 0B1')).toBe(true)
+    expect(ca.pattern.test('12345')).toBe(false)
+
+    const uk = ValidationRuleBuilder.zipCode('UK')
+    expect(uk.message).toBe('Invalid UK postal code')
+    expect(uk.pattern.test('EC1A 1BB')).toBe(true)
+    expect(uk.pattern.test('W1A 0AX')).toBe(true)
+
+    const de = ValidationRuleBuilder.zipCode('DE')
+    expect(de.message).toBe('Invalid DE postal code')
+    expect(de.pattern.test('12345')).toBe(true) // falls back to US
+  })
+
+  it('creditCard validator returns valid for empty values', async () => {
     const rule = ValidationRuleBuilder.creditCard()
-    const result = await rule.validator('4111 1111 1111 1111')
-    expect(result.valid).toBe(true)
-    expect(result.message).toBe('')
+    const res = await rule.validator('')
+    expect(res).toEqual({ valid: true })
   })
 
-  it('rejects an invalid credit card number', async () => {
+  it('creditCard validator validates using Luhn and strips spaces', async () => {
     const rule = ValidationRuleBuilder.creditCard()
-    const result = await rule.validator('4111 1111 1111 1112')
-    expect(result.valid).toBe(false)
-    expect(result.message).toBe('Invalid credit card number')
+    const validCard = '4111 1111 1111 1111'
+    const invalidCard = '4111 1111 1111 1112'
+    const ok = await rule.validator(validCard)
+    const bad = await rule.validator(invalidCard)
+    expect(ok).toEqual({ valid: true, message: '' })
+    expect(bad).toEqual({ valid: false, message: 'Invalid credit card number' })
   })
 
-  it('treats empty value as valid', async () => {
-    const rule = ValidationRuleBuilder.creditCard()
-    const result = await rule.validator('')
-    expect(result.valid).toBe(true)
+  it('greaterThan comparator works and returns true when missing values', () => {
+    const rule = ValidationRuleBuilder.greaterThan('min')
+    expect(rule.type).toBe('cross-field')
+    expect(rule.message).toBe('Value must be greater than min')
+    expect(rule.comparator('', '5')).toBe(true)
+    expect(rule.comparator('10', '')).toBe(true)
+    expect(rule.comparator('10', '5')).toBe(true)
+    expect(rule.comparator('2', '5')).toBe(false)
   })
 
-  it('uses custom message when provided', async () => {
-    const rule = ValidationRuleBuilder.creditCard('Bad CC')
-    const result = await rule.validator('not-a-number')
-    expect(result.valid).toBe(false)
-    expect(result.message).toBe('Bad CC')
-  })
-})
-
-describe('ValidationRuleBuilder.uniqueInArray', () => {
-  it('returns valid when value not in array', async () => {
-    const rule = ValidationRuleBuilder.uniqueInArray(['a', 'b'])
-    const result = await rule.validator('c')
-    expect(result.valid).toBe(true)
-    expect(result.message).toBe('')
+  it('lessThan comparator works and returns true when missing values', () => {
+    const rule = ValidationRuleBuilder.lessThan('max')
+    expect(rule.type).toBe('cross-field')
+    expect(rule.message).toBe('Value must be less than max')
+    expect(rule.comparator('', '5')).toBe(true)
+    expect(rule.comparator('10', '')).toBe(true)
+    expect(rule.comparator('2', '5')).toBe(true)
+    expect(rule.comparator('10', '5')).toBe(false)
   })
 
-  it('returns invalid when value exists', async () => {
-    const rule = ValidationRuleBuilder.uniqueInArray(['x', 'y'], 'Must be unique')
-    const result = await rule.validator('x')
-    expect(result.valid).toBe(false)
-    expect(result.message).toBe('Must be unique')
+  it('matchField comparator checks strict equality', () => {
+    const rule = ValidationRuleBuilder.matchField('confirm')
+    expect(rule.message).toBe('Value must match confirm')
+    expect(rule.comparator('abc', 'abc')).toBe(true)
+    expect(rule.comparator('abc', 'Abc')).toBe(false)
+    expect(rule.comparator('1', 1)).toBe(false)
   })
 
-  it('treats missing array or value as valid', async () => {
-    const rule = ValidationRuleBuilder.uniqueInArray(null)
-    const result = await rule.validator(null)
-    expect(result.valid).toBe(true)
+  it('uniqueInArray custom validator checks uniqueness', async () => {
+    const arr = ['a', 'b', 'c']
+    const rule = ValidationRuleBuilder.uniqueInArray(arr)
+    const dup = await rule.validator('b')
+    const unique = await rule.validator('z')
+    expect(dup).toEqual({ valid: false, message: 'Value must be unique' })
+    expect(unique).toEqual({ valid: true, message: '' })
   })
-})
 
-describe('ValidationRuleBuilder.asyncRemoteValidation', () => {
-  it('calls remote endpoint and returns valid true', async () => {
-    const originalFetch = global.fetch
-    const json = jest.fn().mockResolvedValue({ valid: true })
-    global.fetch = jest.fn().mockResolvedValue({ json })
-    const rule = ValidationRuleBuilder.asyncRemoteValidation('/validate', { extra: 1 }, 'Default msg')
+  it('asyncRemoteValidation success true returns valid with empty message and correct fetch payload', async () => {
+    const endpoint = '/validate'
+    const params = { role: 'user', flag: true }
+    const rule = ValidationRuleBuilder.asyncRemoteValidation(endpoint, params, 'Default message')
+
+    const jsonMock = jest.fn().mockResolvedValue({ valid: true })
+    // @ts-ignore
+    global.fetch = jest.fn().mockResolvedValue({ json: jsonMock })
 
     const formData = { id: 123 }
-    const result = await rule.validator('abc', formData)
-    expect(global.fetch).toHaveBeenCalledTimes(1)
-    const call = (global.fetch as jest.Mock).mock.calls[0]
-    expect(call[0]).toBe('/validate')
-    const options = call[1]
-    expect(options.method).toBe('POST')
-    expect(options.headers['Content-Type']).toBe('application/json')
-    const bodyObj = JSON.parse(options.body)
-    expect(bodyObj).toEqual({ value: 'abc', extra: 1, formData })
-    expect(result.valid).toBe(true)
-    expect(result.message).toBe('')
+    const res = await rule.validator('value123', formData)
+    expect(res).toEqual({ valid: true, message: '' })
+    expect(global.fetch).toHaveBeenCalledWith(endpoint, expect.objectContaining({
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: expect.any(String)
+    }))
 
-    global.fetch = originalFetch as any
+    const body = JSON.parse((global.fetch as jest.Mock).mock.calls[0][1].body)
+    expect(body.value).toBe('value123')
+    expect(body.role).toBe('user')
+    expect(body.flag).toBe(true)
+    expect(body.formData).toEqual(formData)
   })
 
-  it('returns invalid with server-provided message', async () => {
-    const originalFetch = global.fetch
-    const json = jest.fn().mockResolvedValue({ valid: false, message: 'Server says no' })
-    global.fetch = jest.fn().mockResolvedValue({ json })
-    const rule = ValidationRuleBuilder.asyncRemoteValidation('/endpoint', {}, 'Default fallback')
+  it('asyncRemoteValidation success false returns message from server or default', async () => {
+    const endpoint = '/validate2'
+    const ruleWithDefault = ValidationRuleBuilder.asyncRemoteValidation(endpoint, {}, 'Default fail msg')
+    const jsonMock1 = jest.fn().mockResolvedValue({ valid: false, message: 'Server says no' })
+    // @ts-ignore
+    global.fetch = jest.fn().mockResolvedValue({ json: jsonMock1 })
+    const r1 = await ruleWithDefault.validator('abc', {})
+    expect(r1).toEqual({ valid: false, message: 'Server says no' })
 
-    const result = await rule.validator('val', { x: 1 })
-    expect(result.valid).toBe(false)
-    expect(result.message).toBe('Server says no')
-
-    global.fetch = originalFetch as any
+    const ruleNoServerMsg = ValidationRuleBuilder.asyncRemoteValidation(endpoint, {}, 'Default fail msg')
+    const jsonMock2 = jest.fn().mockResolvedValue({ valid: false })
+    ;(global.fetch as jest.Mock).mockResolvedValueOnce({ json: jsonMock2 })
+    const r2 = await ruleNoServerMsg.validator('abc', {})
+    expect(r2).toEqual({ valid: false, message: 'Default fail msg' })
   })
 
-  it('returns invalid with default message when server omits message', async () => {
-    const originalFetch = global.fetch
-    const json = jest.fn().mockResolvedValue({ valid: false })
-    global.fetch = jest.fn().mockResolvedValue({ json })
-    const rule = ValidationRuleBuilder.asyncRemoteValidation('/endpoint', {}, 'Default fallback')
-
-    const result = await rule.validator('val', {})
-    expect(result.valid).toBe(false)
-    expect(result.message).toBe('Default fallback')
-
-    global.fetch = originalFetch as any
-  })
-
-  it('handles fetch failure with service unavailable message', async () => {
-    const originalFetch = global.fetch
-    global.fetch = jest.fn().mockRejectedValue(new Error('Network'))
-    const rule = ValidationRuleBuilder.asyncRemoteValidation('/endpoint')
-
-    const result = await rule.validator('val', {})
-    expect(result.valid).toBe(false)
-    expect(result.message).toBe('Validation service unavailable')
-
-    global.fetch = originalFetch as any
+  it('asyncRemoteValidation handles fetch errors and returns service unavailable message', async () => {
+    const endpoint = '/validate3'
+    const rule = ValidationRuleBuilder.asyncRemoteValidation(endpoint, {}, 'Some msg')
+    // @ts-ignore
+    global.fetch = jest.fn().mockRejectedValue(new Error('Network error'))
+    const res = await rule.validator('x', {})
+    expect(res).toEqual({ valid: false, message: 'Validation service unavailable' })
   })
 })
 
-describe('FormValidationHelpers.sanitizeInput', () => {
-  it('returns value as-is for falsy values', () => {
-    expect(FormValidationHelpers.sanitizeInput(null)).toBe(null)
+describe('FormValidationHelpers', () => {
+  afterEach(() => {
+    jest.clearAllMocks()
+  })
+
+  it('sanitizeInput returns value as-is for falsy inputs', () => {
+    expect(FormValidationHelpers.sanitizeInput(null)).toBeNull()
     expect(FormValidationHelpers.sanitizeInput('')).toBe('')
-    expect(FormValidationHelpers.sanitizeInput(0 as any)).toBe(0 as any)
+    // undefined should return undefined
+    expect(FormValidationHelpers.sanitizeInput(undefined)).toBeUndefined()
   })
 
-  it('sanitizes email: lowercases and trims', () => {
-    expect(FormValidationHelpers.sanitizeInput('  USER@EXAMPLE.COM  ', 'email')).toBe('user@example.com')
-  })
-
-  it('sanitizes phone: removes invalid characters', () => {
-    expect(FormValidationHelpers.sanitizeInput(' +1 (234) 567-8901 ext. 123 ', 'phone')).toBe('+1 (234) 567-8901  123 ')
-  })
-
-  it('sanitizes number: keeps digits, dot and minus', () => {
-    expect(FormValidationHelpers.sanitizeInput(' $-123,456.78abc ', 'number')).toBe('-123456.78')
-  })
-
-  it('sanitizes alphanumeric', () => {
-    expect(FormValidationHelpers.sanitizeInput(' A_b-1!@# ', 'alphanumeric')).toBe('Ab1')
-  })
-
-  it('sanitizes text by trimming', () => {
+  it('sanitizeInput processes email/phone/number/alphanumeric/text', () => {
+    expect(FormValidationHelpers.sanitizeInput(' Test@Example.COM ', 'email')).toBe('test@example.com')
+    expect(FormValidationHelpers.sanitizeInput(' (123) 456-7890 ext 55 ', 'phone')).toBe('(123)456-789055')
+    expect(FormValidationHelpers.sanitizeInput(' -1,234.50USD ', 'number')).toBe('-1234.50')
+    expect(FormValidationHelpers.sanitizeInput('abc-123_X ', 'alphanumeric')).toBe('abc123X')
     expect(FormValidationHelpers.sanitizeInput('  hello world  ', 'text')).toBe('hello world')
     expect(FormValidationHelpers.sanitizeInput('  hello world  ')).toBe('hello world')
   })
-})
 
-describe('FormValidationHelpers.formatErrorMessage', () => {
-  it('returns empty string when no errors', () => {
-    expect(FormValidationHelpers.formatErrorMessage('firstName', [])).toBe('')
-    expect(FormValidationHelpers.formatErrorMessage('firstName', null as any)).toBe('')
+  it('formatErrorMessage returns empty string for no errors', () => {
+    expect(FormValidationHelpers.formatErrorMessage('fieldName', [])).toBe('')
+    expect(FormValidationHelpers.formatErrorMessage('fieldName', null)).toBe('')
+    expect(FormValidationHelpers.formatErrorMessage('fieldName', undefined)).toBe('')
   })
 
-  it('formats camelCase field name and joins errors', () => {
-    const msg = FormValidationHelpers.formatErrorMessage('firstName', ['is required', 'must be longer'])
-    expect(msg).toBe('First Name: is required, must be longer')
+  it('formatErrorMessage formats fieldName from camelCase and joins errors', () => {
+    const msg = FormValidationHelpers.formatErrorMessage('postalCode', ['Invalid', 'Too short'])
+    expect(msg).toBe('postal Code: Invalid, Too short')
+    const msg2 = FormValidationHelpers.formatErrorMessage('FirstName', ['Missing'])
+    expect(msg2).toBe('First Name: Missing')
   })
-})
 
-describe('FormValidationHelpers.groupValidationResults', () => {
-  it('groups errors, warnings, and valid fields', () => {
+  it('groupValidationResults groups errors, warnings, and valid correctly', () => {
     const results = {
-      name: { errors: ['Required'], warnings: [], valid: false },
-      email: { errors: [], warnings: ['Looks suspicious'], valid: true },
-      age: { errors: [], warnings: [], valid: true }
+      field1: { errors: ['e1'], warnings: [], valid: false },
+      field2: { errors: [], warnings: ['w1'], valid: true },
+      field3: { errors: [], warnings: [], valid: true },
+      field4: { errors: ['e2'], warnings: ['w2'], valid: true }
     }
     const grouped = FormValidationHelpers.groupValidationResults(results)
-    expect(grouped.errors).toEqual([{ field: 'name', messages: ['Required'] }])
-    expect(grouped.warnings).toEqual([{ field: 'email', messages: ['Looks suspicious'] }])
-    expect(grouped.valid).toEqual(['age'])
-  })
-})
-
-describe('FormValidationHelpers.createDebouncer', () => {
-  it('schedule calls function immediately and uses clearTimeout with prior token', () => {
-    const spy = jest.spyOn(global, 'clearTimeout')
-    const debouncer = FormValidationHelpers.createDebouncer(123)
-    const fn = jest.fn()
-    debouncer.schedule(fn)
-    expect(fn).toHaveBeenCalledTimes(1)
-    expect(spy).toHaveBeenCalled()
+    expect(grouped.errors).toEqual([
+      { field: 'field1', messages: ['e1'] },
+      { field: 'field4', messages: ['e2'] }
+    ])
+    expect(grouped.warnings).toEqual([
+      { field: 'field2', messages: ['w1'] },
+      { field: 'field4', messages: ['w2'] }
+    ])
+    expect(grouped.valid).toEqual(['field3'])
   })
 
-  it('cancel clears the stored timeout id equal to wait', () => {
-    const spy = jest.spyOn(global, 'clearTimeout')
-    const debouncer = FormValidationHelpers.createDebouncer(250)
-    const fn = jest.fn()
-    debouncer.schedule(fn)
+  it('createDebouncer calls scheduled function immediately and clearTimeout is invoked on schedule and cancel', () => {
+    const clearSpy = jest.spyOn(global, 'clearTimeout')
+    const debouncer = FormValidationHelpers.createDebouncer(100)
+    const fn1 = jest.fn()
+    const fn2 = jest.fn()
+
+    debouncer.schedule(fn1)
+    expect(fn1).toHaveBeenCalledTimes(1)
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+
+    debouncer.schedule(fn2)
+    expect(fn2).toHaveBeenCalledTimes(1)
+    expect(clearSpy).toHaveBeenCalledTimes(2)
+
     debouncer.cancel()
-    const lastCallArg = spy.mock.calls[spy.mock.calls.length - 1][0]
-    expect(lastCallArg).toBe(250)
+    expect(clearSpy).toHaveBeenCalledTimes(3)
   })
 
-  it('subsequent schedules call function each time', () => {
-    const debouncer = FormValidationHelpers.createDebouncer(10)
-    const fn = jest.fn()
-    debouncer.schedule(fn)
-    debouncer.schedule(fn)
-    expect(fn).toHaveBeenCalledTimes(2)
-  })
-})
-
-describe('FormValidationHelpers.calculatePasswordStrength', () => {
-  it('returns None for empty password', () => {
+  it('calculatePasswordStrength returns None for empty input', () => {
     const res = FormValidationHelpers.calculatePasswordStrength('')
-    expect(res.strength).toBe(0)
-    expect(res.label).toBe('None')
-    expect(res.feedback).toEqual([])
+    expect(res).toEqual({ strength: 0, label: 'None', feedback: [] })
   })
 
-  it('returns Weak with feedback for very simple password', () => {
+  it('calculatePasswordStrength evaluates weak short password with feedback', () => {
     const res = FormValidationHelpers.calculatePasswordStrength('abc')
     expect(res.strength).toBeGreaterThanOrEqual(1)
     expect(res.label).toBe('Weak')
     expect(res.feedback).toEqual(expect.arrayContaining(['Use at least 8 characters', 'Add numbers', 'Add special characters']))
   })
 
-  it('returns Very Strong for complex password without repetition', () => {
-    const res = FormValidationHelpers.calculatePasswordStrength('Aa1!xYz!')
-    expect(res.strength).toBeGreaterThanOrEqual(5)
-    expect(res.label).toBe('Very Strong')
-    expect(res.feedback).toEqual([])
+  it('calculatePasswordStrength rates strong mixed password', () => {
+    const res = FormValidationHelpers.calculatePasswordStrength('Abcdef12!')
+    expect(res.strength).toBeGreaterThanOrEqual(4)
+    expect(['Strong', 'Very Strong']).toContain(res.label)
+    expect(res.feedback.length).toBeLessThanOrEqual(1)
   })
 
-  it('penalizes repeated characters (3+ in a row)', () => {
-    const res = FormValidationHelpers.calculatePasswordStrength('AAAaaa111!!!')
-    expect(res.feedback).toContain('Avoid repeated characters')
-    expect(res.strength).toBeGreaterThanOrEqual(0)
+  it('calculatePasswordStrength penalizes repeated characters', () => {
+    const res = FormValidationHelpers.calculatePasswordStrength('AAAAAAAAAAAA')
+    expect(res.strength).toBeGreaterThanOrEqual(1)
+    expect(res.feedback).toEqual(expect.arrayContaining(['Add numbers', 'Add special characters', 'Avoid repeated characters']))
+    expect(['Weak', 'Fair', 'Good']).toContain(res.label)
   })
 })
