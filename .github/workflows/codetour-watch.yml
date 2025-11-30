@@ -6,8 +6,8 @@ on:
 
 jobs:
     codetour-watch:
-        runs-on: trailheadapps-Ubuntu
-        if: github.actor != 'trailheadapps-bot' && github.actor != 'dependabot[bot]'
+        runs-on: ubuntu-latest
+        if: github.actor != 'trailheadapps-bot' && github.actor != 'dependabot[bot]' && github.repository == 'trailheadapps/lwc-recipes'
         steps:
             - name: 'Checkout source code'
               uses: actions/checkout@v4
@@ -16,8 +16,8 @@ jobs:
               uses: pozil/codetour-watch@v3.0.0
 
     skip-codetour-watch:
-        if: github.actor == 'trailheadapps-bot' || github.actor == 'dependabot[bot]'
-        runs-on: trailheadapps-Ubuntu
+        if: github.actor == 'trailheadapps-bot' || github.actor == 'dependabot[bot]' || github.repository != 'trailheadapps/lwc-recipes'
+        runs-on: ubuntu-latest
         steps:
             - name: Noop
               run: |
