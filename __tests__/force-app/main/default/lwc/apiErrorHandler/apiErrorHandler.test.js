@@ -1,7 +1,8 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
 // Provide a minimal lwc mock with required runtime hooks to avoid registerDecorators errors
-jest.mock('lwc', () => {
+jest.mock('lwc', () => ({
+  ...jest.requireActual('lwc'),
   const LightningElement = class {};
   const api = () => {};
   const track = () => {};
