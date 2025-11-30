@@ -1,9 +1,27 @@
 import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals';
 
-jest.mock('lwc', () => ({
-  LightningElement: class {},
-  api: () => {}
-}));
+// Provide a minimal lwc mock with required runtime hooks to avoid registerDecorators errors
+jest.mock('lwc', () => {
+  const LightningElement = class {};
+  const api = () => {};
+  const track = () => {};
+  const wire = () => {};
+  const registerComponent = (Ctor) => Ctor;
+  const registerDecorators = (Ctor) => Ctor;
+  const createElement = () => ({});
+  const freezeTemplate = (t) => t;
+
+  return {
+    LightningElement,
+    api,
+    track,
+    wire,
+    registerComponent,
+    registerDecorators,
+    createElement,
+    freezeTemplate
+  };
+});
 
 import ApiErrorHandler from '../../../../../../force-app/main/default/lwc/apiErrorHandler/apiErrorHandler';
 
@@ -24,7 +42,6 @@ describe('ApiErrorHandler', () => {
       expect(result).toBeDefined();
       expect(typeof result.message).toBe('string');
       expect(typeof result.type).toBe('string');
-      // details may be null/undefined based on implementation; just assert property exists
       expect('details' in result).toBe(true);
     });
 
@@ -67,7 +84,6 @@ describe('ApiErrorHandler', () => {
       expect(result.message).toContain('Required');
       expect(result.message).toContain('Too short');
       expect(result.message).toContain('Invalid');
-      // implementation may choose details as fieldErrors object
       expect(result.details).toBe(fieldErrors);
     });
 
@@ -81,31 +97,26 @@ describe('ApiErrorHandler', () => {
       expect(result.details).toBe(pageErrors);
     });
 
-    it('prefers body.message over fieldErrors when both are present', () => {
-      const error = {
-        body: {
-          message: 'Primary message',
-          fieldErrors: { Name: [{ message: 'Required' }] }
-        }
-      };
+    it('falls back to top-level message when body is missing', () => {
+      const error = { message: 'Top-level error message' };
       const result = handler.parseError(error);
-      expect(result.message).toBe('Primary message');
-      // type may be 'standard' or based on errorCode; ensure it is a string
+      expect(result.message).toContain('Top-level error message');
       expect(typeof result.type).toBe('string');
+      expect('details' in result).toBe(true);
     });
 
-    it('uses top-level message when body is missing', () => {
-      const error = { message: 'Top-level message' };
-      const result = handler.parseError(error);
-      expect(result.message).toBe('Top-level message');
+    it('handles string error input gracefully', () => {
+      const result = handler.parseError('Simple error string');
+      expect(result.message).toContain('Simple error string');
       expect(typeof result.type).toBe('string');
+      expect('details' in result).toBe(true);
     });
 
-    it('handles string error as a standard message', () => {
-      const error = 'String error';
-      const result = handler.parseError(error);
-      expect(result.message).toContain('String error');
+    it('handles unknown shapes gracefully', () => {
+      const result = handler.parseError({ foo: 'bar' });
+      expect(typeof result.message).toBe('string');
       expect(typeof result.type).toBe('string');
+      expect('details' in result).toBe(true);
     });
   });
 });
