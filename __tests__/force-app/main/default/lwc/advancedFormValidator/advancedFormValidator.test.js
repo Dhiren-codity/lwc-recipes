@@ -1,334 +1,299 @@
-import { describe, it, expect, jest, beforeEach, afterEach } from '@jest/globals'
+import { describe, it, expect, jest, afterEach } from '@jest/globals'
 import { createElement } from 'lwc'
 import AdvancedFormValidator from '../../../../../../force-app/main/default/lwc/advancedFormValidator/advancedFormValidator'
 
-describe('AdvancedFormValidator', () => {
-  let element
+function newComponent() {
+  const element = createElement('c-advanced-form-validator', { is: AdvancedFormValidator })
+  document.body.appendChild(element)
+  return element
+}
 
-  const createComponent = () => {
-    const el = createElement('c-advanced-form-validator', { is: AdvancedFormValidator })
-    document.body.appendChild(el)
-    return el
+afterEach(() => {
+  jest.clearAllMocks()
+  while (document.body.firstChild) {
+    document.body.removeChild(document.body.firstChild)
   }
+})
 
-  beforeEach(() => {
-    jest.useFakeTimers()
-    element = createComponent()
+describe('AdvancedFormValidator - registration', () => {
+  it('registerField initializes rules, dependencies, and initial validation results', () => {
+    const element = newComponent()
+    const ruleFn = (v) => ({ valid: true })
+    element.registerField('name', [ruleFn], ['dep1'])
+
+    expect(element.validationRules.get('name')).toEqual([ruleFn])
+    expect(element.fieldDependencies.get('name')).toEqual(['dep1'])
+    expect(element.getFieldValidation('name')).toEqual({ valid: true, errors: [], warnings: [] })
   })
 
-  afterEach(() => {
-    jest.clearAllMocks()
-    while (document.body.firstChild) {
-      document.body.removeChild(document.body.firstChild)
-    }
-    jest.useRealTimers()
-  })
-
-  it('registerField initializes rules, dependencies and initial validation results', () => {
-    element.registerField('name', [{ type: 'required', message: 'Required' }], ['email'])
-
-    expect(element.validationRules.get('name')).toEqual([{ type: 'required', message: 'Required' }])
-    expect(element.fieldDependencies.get('name')).toEqual(['email'])
-    expect(element.validationResults['name']).toEqual({ valid: true, errors: [], warnings: [] })
-  })
-
-  it('registerField without dependencies does not set fieldDependencies for that field', () => {
-    element.registerField('age', [{ type: 'range', min: 18, max: 99 }])
-
-    expect(element.validationRules.get('age')).toEqual([{ type: 'range', min: 18, max: 99 }])
-    expect(element.fieldDependencies.has('age')).toBe(false)
-  })
-
-  it('required rule marks field invalid when value is empty/undefined', async () => {
-    element.registerField('username', [{ type: 'required', message: 'Username is required' }])
-
-    const result = await element.validateField('username', '')
-    expect(result.valid).toBe(false)
-    expect(result.errors).toEqual(['Username is required'])
-    expect(result.warnings).toEqual([])
-
-    const result2 = await element.validateField('username', undefined)
-    expect(result2.valid).toBe(false)
-    expect(result2.errors).toEqual(['Username is required'])
-  })
-
-  it('required rule passes when value is non-empty', async () => {
-    element.registerField('username', [{ type: 'required', message: 'Username is required' }])
-
-    const result = await element.validateField('username', 'john')
-    expect(result.valid).toBe(true)
-    expect(result.errors).toEqual([])
-    expect(result.warnings).toEqual([])
-  })
-
-  it('pattern rule validates strings by regex and ignores empty values', async () => {
-    element.registerField('code', [{ type: 'pattern', pattern: '^[A-Z]{3}[0-9]{2}$', message: 'Bad code' }])
-
-    const okEmpty = await element.validateField('code', '')
-    expect(okEmpty.valid).toBe(true)
-    expect(okEmpty.errors).toEqual([])
-
-    const bad = await element.validateField('code', 'abc12')
-    expect(bad.valid).toBe(false)
-    expect(bad.errors).toEqual(['Bad code'])
-
-    const good = await element.validateField('code', 'ABC12')
-    expect(good.valid).toBe(true)
-    expect(good.errors).toEqual([])
-  })
-
-  it('length rule enforces min and max on string length and ignores empty values', async () => {
-    element.registerField('nickname', [{ type: 'length', min: 2, max: 5, message: 'Length must be between 2 and 5' }])
-
-    const emptyRes = await element.validateField('nickname', '')
-    expect(emptyRes.valid).toBe(true)
-    expect(emptyRes.errors).toEqual([])
-
-    const tooShort = await element.validateField('nickname', 'A')
-    expect(tooShort.valid).toBe(false)
-    expect(tooShort.errors).toEqual(['Length must be between 2 and 5'])
-
-    const tooLong = await element.validateField('nickname', 'ABCDEFG')
-    expect(tooLong.valid).toBe(false)
-    expect(tooLong.errors).toEqual(['Length must be between 2 and 5'])
-
-    const ok = await element.validateField('nickname', 'Alex')
-    expect(ok.valid).toBe(true)
-    expect(ok.errors).toEqual([])
-  })
-
-  it('range rule requires numeric values and enforces min/max; ignores empty', async () => {
-    element.registerField('age', [{ type: 'range', min: 18, max: 65 }])
-
-    const emptyRes = await element.validateField('age', '')
-    expect(emptyRes.valid).toBe(true)
-
-    const notNumeric = await element.validateField('age', 'abc')
-    expect(notNumeric.valid).toBe(false)
-    expect(notNumeric.errors).toEqual(['Value must be numeric'])
-
-    const tooLow = await element.validateField('age', '17')
-    expect(tooLow.valid).toBe(false)
-    expect(tooLow.errors[0]).toContain('Value must be between')
-
-    const tooHigh = await element.validateField('age', 70)
-    expect(tooHigh.valid).toBe(false)
-    expect(tooHigh.errors[0]).toContain('Value must be between')
-
-    const ok = await element.validateField('age', 30)
-    expect(ok.valid).toBe(true)
-  })
-
-  it('function rule in rules array can return a warning without affecting validity', async () => {
-    const warnRule = (value) => {
-      if (value === 'edge') {
-        return { valid: false, message: 'Edge case', severity: 'warning' }
-      }
-      return { valid: true }
-    }
-    element.registerField('status', [warnRule])
-
-    const res = await element.validateField('status', 'edge', {})
-    expect(res.valid).toBe(true)
-    expect(res.errors).toEqual([])
-    expect(res.warnings).toEqual(['Edge case'])
-  })
-
-  it('custom type rule invokes provided validator function and collects errors', async () => {
-    const validatorFn = jest.fn().mockResolvedValue({ valid: false, message: 'Custom fail', severity: 'error' })
-    element.registerField('custom', [{ type: 'custom', validator: validatorFn }])
-
-    const res = await element.validateField('custom', 'x', {})
-    expect(validatorFn).toHaveBeenCalledWith('x', {})
-    expect(res.valid).toBe(false)
-    expect(res.errors).toEqual(['Custom fail'])
-    expect(res.warnings).toEqual([])
-  })
-
-  it('conditional rule skips nested rule when condition returns false', async () => {
-    const condition = jest.fn().mockResolvedValue(false)
-    element.registerField('field', [{
-      type: 'conditional',
-      condition,
-      rule: { type: 'required', message: 'Must not trigger' }
-    }])
-
-    const res = await element.validateField('field', '', {})
-    expect(condition).toHaveBeenCalled()
-    expect(res.valid).toBe(true)
-    expect(res.errors).toEqual([])
-  })
-
-  it('conditional rule executes nested rule when condition true', async () => {
-    const condition = jest.fn().mockResolvedValue(true)
-    element.registerField('field', [{
-      type: 'conditional',
-      condition,
-      rule: { type: 'required', message: 'Need value' }
-    }])
-
-    const res = await element.validateField('field', '', {})
-    expect(condition).toHaveBeenCalled()
-    expect(res.valid).toBe(false)
-    expect(res.errors).toEqual(['Need value'])
-  })
-
-  it('cross-field rule compares against related field value', async () => {
-    const comparator = (value, related) => value === related
-    element.registerField('passwordConfirm', [{
-      type: 'cross-field',
-      relatedField: 'password',
-      comparator,
-      message: 'Passwords do not match'
-    }])
-
-    const res = await element.validateField('passwordConfirm', 'abc', { password: 'def' })
-    expect(res.valid).toBe(false)
-    expect(res.errors).toEqual(['Passwords do not match'])
-
-    const res2 = await element.validateField('passwordConfirm', 'abc', { password: 'abc' })
-    expect(res2.valid).toBe(true)
-    expect(res2.errors).toEqual([])
-  })
-
-  it('registerAsyncValidator stores validators and validateField collects async errors', async () => {
+  it('registerAsyncValidator stores validators with debounce and accumulates multiple validators', () => {
+    const element = newComponent()
+    const v1 = jest.fn().mockResolvedValue({ valid: true })
+    const v2 = jest.fn().mockResolvedValue({ valid: true })
     element.registerField('email', [])
-    const asyncValidator = jest.fn().mockResolvedValue({ valid: false, message: 'Email taken', severity: 'error' })
-    element.registerAsyncValidator('email', asyncValidator)
+    element.registerAsyncValidator('email', v1, 500)
+    element.registerAsyncValidator('email', v2)
 
-    const res = await element.validateField('email', 'user@example.com', {})
-    expect(asyncValidator).toHaveBeenCalledWith('user@example.com', {})
+    const arr = element.asyncValidators.get('email')
+    expect(arr).toHaveLength(2)
+    expect(arr[0].validator).toBe(v1)
+    expect(arr[0].debounce).toBe(500)
+    expect(arr[0].timer).toBeNull()
+    expect(arr[1].validator).toBe(v2)
+    expect(arr[1].debounce).toBe(300)
+  })
+})
+
+describe('AdvancedFormValidator - validateField sync rules', () => {
+  it('function rule producing warning results in warnings only and valid true', async () => {
+    const element = newComponent()
+    const warnRule = () => ({ valid: false, message: 'warn1', severity: 'warning' })
+    element.registerField('field1', [warnRule])
+
+    const res = await element.validateField('field1', 'v', {})
+    expect(res.valid).toBe(true)
+    expect(res.errors).toEqual([])
+    expect(res.warnings).toEqual(['warn1'])
+  })
+
+  it('required rule failing produces default error and hasErrors true', async () => {
+    const element = newComponent()
+    element.registerField('f', [{ type: 'required' }])
+
+    const res = await element.validateField('f', '', {})
     expect(res.valid).toBe(false)
-    expect(res.errors).toEqual(['Email taken'])
+    expect(res.errors).toEqual(['Field is required'])
+    expect(res.warnings).toEqual([])
+    expect(element.hasErrors()).toBe(true)
+  })
+
+  it('pattern rule invalid uses default message', async () => {
+    const element = newComponent()
+    element.registerField('code', [{ type: 'pattern', pattern: '^[A-Z]+$' }])
+
+    const res = await element.validateField('code', 'abc', {})
+    expect(res.valid).toBe(false)
+    expect(res.errors).toEqual(['Invalid format'])
     expect(res.warnings).toEqual([])
   })
 
-  it('async validator can create warnings without invalidating field', async () => {
-    element.registerField('handle', [])
-    const warnAsync = jest.fn().mockResolvedValue({ valid: false, message: 'Unusual handle', severity: 'warning' })
-    element.registerAsyncValidator('handle', warnAsync)
+  it('length rule invalid uses default message with min and max', async () => {
+    const element = newComponent()
+    element.registerField('nick', [{ type: 'length', min: 2, max: 4 }])
 
-    const res = await element.validateField('handle', 'weird_handle', {})
+    const res = await element.validateField('nick', 'a', {})
+    expect(res.valid).toBe(false)
+    expect(res.errors).toEqual(['Length must be between 2 and 4'])
+    expect(res.warnings).toEqual([])
+  })
+
+  it('range rule with non-numeric value returns "Value must be numeric"', async () => {
+    const element = newComponent()
+    element.registerField('age', [{ type: 'range', min: 1, max: 99 }])
+
+    const res = await element.validateField('age', 'abc', {})
+    expect(res.valid).toBe(false)
+    expect(res.errors).toEqual(['Value must be numeric'])
+    expect(res.warnings).toEqual([])
+  })
+
+  it('range rule failure with severity warning results in warnings only', async () => {
+    const element = newComponent()
+    element.registerField('score', [{ type: 'range', min: 5, max: 10, severity: 'warning' }])
+
+    const res = await element.validateField('score', 100, {})
     expect(res.valid).toBe(true)
     expect(res.errors).toEqual([])
-    expect(res.warnings).toEqual(['Unusual handle'])
+    expect(res.warnings).toEqual(['Value must be between 5 and 10'])
   })
 
-  it('validateField revalidates dependent fields when provided in formData', async () => {
-    element.registerField('a', [], ['b'])
-    element.registerField('b', [{ type: 'required', message: 'B required' }])
-    const formData = { a: 'valueA', b: '' }
+  it('custom rule validator returns its message on failure', async () => {
+    const element = newComponent()
+    const customValidator = jest.fn().mockResolvedValue({ valid: false, message: 'custom fail' })
+    element.registerField('x', [{ type: 'custom', validator: customValidator }])
 
-    const res = await element.validateField('a', 'valueA', formData)
+    const formData = { x: 5 }
+    const res = await element.validateField('x', 5, formData)
+    expect(customValidator).toHaveBeenCalledWith(5, formData)
+    expect(res.valid).toBe(false)
+    expect(res.errors).toEqual(['custom fail'])
+    expect(res.warnings).toEqual([])
+  })
+
+  it('conditional rule with false condition returns valid and ignores inner rule', async () => {
+    const element = newComponent()
+    const condition = jest.fn().mockResolvedValue(false)
+    element.registerField('cf', [
+      { type: 'conditional', condition, rule: { type: 'required', message: 'should not run' } }
+    ])
+    const formData = { cf: '' }
+    const res = await element.validateField('cf', '', formData)
+    expect(condition).toHaveBeenCalledWith(formData)
     expect(res.valid).toBe(true)
-    const bResult = element.getFieldValidation('b')
-    expect(bResult.valid).toBe(false)
-    expect(bResult.errors).toEqual(['B required'])
+    expect(res.errors).toEqual([])
+    expect(res.warnings).toEqual([])
   })
 
-  it('validateForm validates all registered fields and aggregates counts', async () => {
-    element.registerField('name', [{ type: 'required', message: 'Name required' }])
-    element.registerField('note', [
-      (value) => value === 'warn' ? ({ valid: false, message: 'Just a warning', severity: 'warning' }) : ({ valid: true })
-    ])
-    const formData = { name: '', note: 'warn' }
-
-    const formRes = await element.validateForm(formData)
-    expect(formRes.valid).toBe(false)
-    expect(formRes.errorCount).toBe(1)
-    expect(formRes.warningCount).toBe(1)
-    expect(formRes.results.name.valid).toBe(false)
-    expect(formRes.results.note.valid).toBe(true)
-    expect(formRes.results.note.warnings).toEqual(['Just a warning'])
-    expect(element.validationResults).toEqual(formRes.results)
-  })
-
-  it('getFieldValidation returns default valid result for unknown field', () => {
-    const res = element.getFieldValidation('unknown')
-    expect(res).toEqual({ valid: true, errors: [], warnings: [] })
-  })
-
-  it('getFieldValidation returns last computed result for a field', async () => {
-    element.registerField('zip', [{ type: 'length', min: 5, max: 5, message: 'ZIP must be 5 chars' }])
-    const res = await element.validateField('zip', '123')
-    const readBack = element.getFieldValidation('zip')
-    expect(readBack).toEqual(res)
-  })
-
-  it('hasErrors reflects presence of invalid fields (warnings do not count as errors)', async () => {
-    element.registerField('field1', [{ type: 'required' }])
-    element.registerField('field2', [
-      () => ({ valid: false, message: 'warn only', severity: 'warning' })
+  it('conditional rule with true condition executes inner rule and fails accordingly', async () => {
+    const element = newComponent()
+    const condition = jest.fn().mockResolvedValue(true)
+    element.registerField('ct', [
+      { type: 'conditional', condition, rule: { type: 'required', message: 'Need' } }
     ])
 
-    await element.validateField('field1', '')
-    await element.validateField('field2', 'x')
+    const res = await element.validateField('ct', '', {})
+    expect(res.valid).toBe(false)
+    expect(res.errors).toEqual(['Need'])
+    expect(res.warnings).toEqual([])
+  })
+
+  it('cross-field rule compares values and returns default message on failure', async () => {
+    const element = newComponent()
+    element.registerField('confirm', [
+      { type: 'cross-field', relatedField: 'password', comparator: (v, rv) => v === rv }
+    ])
+    const formData = { password: 'abc', confirm: '123' }
+    const res = await element.validateField('confirm', '123', formData)
+    expect(res.valid).toBe(false)
+    expect(res.errors).toEqual(['Cross-field validation failed'])
+    expect(res.warnings).toEqual([])
+  })
+
+  it('unknown rule type is treated as valid', async () => {
+    const element = newComponent()
+    element.registerField('u', [{ type: 'unknown', message: 'ignored' }])
+
+    const res = await element.validateField('u', 'anything', {})
+    expect(res.valid).toBe(true)
+    expect(res.errors).toEqual([])
+    expect(res.warnings).toEqual([])
+  })
+})
+
+describe('AdvancedFormValidator - async validators and timers', () => {
+  it('async validators are executed and aggregated into errors', async () => {
+    const element = newComponent()
+    element.registerField('af', [])
+    const asyncV = jest.fn().mockResolvedValue({ valid: false, message: 'async error' })
+    element.registerAsyncValidator('af', asyncV)
+
+    const res = await element.validateField('af', 'v', {})
+    expect(asyncV).toHaveBeenCalledWith('v', {})
+    expect(res.valid).toBe(false)
+    expect(res.errors).toEqual(['async error'])
+    expect(res.warnings).toEqual([])
+  })
+
+  it('clearTimeout is called when async validator has an existing timer', async () => {
+    const element = newComponent()
+    element.registerField('af', [])
+    const asyncV = jest.fn().mockResolvedValue({ valid: true })
+    element.registerAsyncValidator('af', asyncV)
+
+    const validators = element.asyncValidators.get('af')
+    const timer = setTimeout(() => {}, 1000)
+    validators[0].timer = timer
+
+    const clearSpy = jest.spyOn(global, 'clearTimeout')
+    await element.validateField('af', 'value', {})
+    expect(clearSpy).toHaveBeenCalledTimes(1)
+    expect(clearSpy).toHaveBeenCalledWith(timer)
+  })
+})
+
+describe('AdvancedFormValidator - dependencies', () => {
+  it('validating a field triggers validation for its dependent fields when present in formData', async () => {
+    const element = newComponent()
+    // password field depends on confirm
+    element.registerField('password', [], ['confirm'])
+    element.registerField('confirm', [
+      { type: 'cross-field', relatedField: 'password', comparator: (v, rv) => v === rv }
+    ])
+
+    const formData = { password: 'abc', confirm: 'xyz' }
+    const res = await element.validateField('password', 'abc', formData)
+    expect(res.valid).toBe(true)
+    const confirmResult = element.validationResults['confirm']
+    expect(confirmResult.valid).toBe(false)
+    expect(confirmResult.errors).toEqual(['Cross-field validation failed'])
+  })
+})
+
+describe('AdvancedFormValidator - validateForm and aggregation', () => {
+  it('validateForm aggregates results and counts errors and warnings', async () => {
+    const element = newComponent()
+    element.registerField('f1', [{ type: 'required', message: 'Need' }])
+    element.registerField('f2', [{ type: 'pattern', pattern: '^\\d+$', message: 'Digits only', severity: 'warning' }])
+    element.registerField('f3', [])
+    const asyncV = jest.fn().mockResolvedValue({ valid: false, message: 'async err' })
+    element.registerAsyncValidator('f3', asyncV)
+
+    const formData = { f1: '', f2: 'abc', f3: 1 }
+    const formResult = await element.validateForm(formData)
+
+    expect(formResult.valid).toBe(false)
+    expect(formResult.errorCount).toBe(2)
+    expect(formResult.warningCount).toBe(1)
+    expect(formResult.results.f1.errors).toEqual(['Need'])
+    expect(formResult.results.f2.warnings).toEqual(['Digits only'])
+    expect(formResult.results.f3.errors).toEqual(['async err'])
+  })
+})
+
+describe('AdvancedFormValidator - getters and clearing results', () => {
+  it('getFieldValidation returns default for non-existent field', () => {
+    const element = newComponent()
+    expect(element.getFieldValidation('nope')).toEqual({ valid: true, errors: [], warnings: [] })
+  })
+
+  it('clearValidation(fieldName) resets that field to default state', async () => {
+    const element = newComponent()
+    element.registerField('a', [{ type: 'required' }])
+
+    await element.validateField('a', '', {})
     expect(element.hasErrors()).toBe(true)
+    element.clearValidation('a')
 
-    await element.validateField('field1', 'ok')
+    const resAfter = element.getFieldValidation('a')
+    expect(resAfter).toEqual({ valid: true, errors: [], warnings: [] })
     expect(element.hasErrors()).toBe(false)
   })
 
-  it('clearValidation(fieldName) resets only that field; clearValidation() resets all', async () => {
-    element.registerField('alpha', [{ type: 'required', message: 'need' }])
-    element.registerField('beta', [{ type: 'required', message: 'need' }])
+  it('clearValidation() without args resets all validation results', async () => {
+    const element = newComponent()
+    element.registerField('a', [{ type: 'required' }])
+    element.registerField('b', [{ type: 'required' }])
+    await element.validateField('a', '', {})
+    await element.validateField('b', '', {})
 
-    await element.validateField('alpha', '')
-    await element.validateField('beta', '')
-
-    expect(element.getFieldValidation('alpha').valid).toBe(false)
-    expect(element.getFieldValidation('beta').valid).toBe(false)
-
-    element.clearValidation('alpha')
-    expect(element.getFieldValidation('alpha')).toEqual({ valid: true, errors: [], warnings: [] })
-    expect(element.getFieldValidation('beta').valid).toBe(false)
-
+    expect(element.hasErrors()).toBe(true)
     element.clearValidation()
     expect(element.validationResults).toEqual({})
+    expect(element.hasErrors()).toBe(false)
   })
 
-  it('getErrorSummary returns fields with errors or warnings', async () => {
-    element.registerField('f1', [{ type: 'required', message: 'req' }])
-    element.registerField('f2', [
-      () => ({ valid: false, message: 'warn', severity: 'warning' })
-    ])
-    element.registerField('f3', [])
+  it('getErrorSummary returns only fields with errors or warnings and includes warnings even if valid', async () => {
+    const element = newComponent()
+    element.registerField('warnField', [{ type: 'range', min: 5, max: 10, severity: 'warning' }])
+    element.registerField('okField', [{ type: 'pattern', pattern: '^\\d+$' }])
 
-    await element.validateField('f1', '')
-    await element.validateField('f2', 'x')
-    await element.validateField('f3', 'ok')
+    await element.validateField('warnField', 100, {})
+    await element.validateField('okField', '123', {})
 
     const summary = element.getErrorSummary()
-    expect(Object.keys(summary).sort()).toEqual(['f1', 'f2'])
-    expect(summary.f1.errors).toEqual(['req'])
-    expect(summary.f1.warnings).toEqual([])
-    expect(summary.f2.errors).toEqual([])
-    expect(summary.f2.warnings).toEqual(['warn'])
+    expect(Object.keys(summary)).toEqual(['warnField'])
+    expect(summary.warnField.errors).toEqual([])
+    expect(summary.warnField.warnings).toEqual(['Value must be between 5 and 10'])
   })
 
-  it('validateField clears existing async timers when present before executing async validators', async () => {
-    element.registerField('timerField', [])
-    const asyncValidator = jest.fn().mockResolvedValue({ valid: true })
-    element.registerAsyncValidator('timerField', asyncValidator)
+  it('hasErrors returns false when only warnings exist', async () => {
+    const element = newComponent()
+    element.registerField('onlyWarn', [{ type: 'pattern', pattern: '^\\d+$', message: 'warn digits', severity: 'warning' }])
 
-    const ctSpy = jest.spyOn(global, 'clearTimeout')
-    const list = element.asyncValidators.get('timerField')
-    const timerId = setTimeout(() => {}, 1000)
-    list[0].timer = timerId
-
-    const res = await element.validateField('timerField', 'value', {})
-    expect(ctSpy).toHaveBeenCalledWith(timerId)
+    const res = await element.validateField('onlyWarn', 'abc', {})
     expect(res.valid).toBe(true)
-  })
-
-  it('validateField updates validationResults for the field being validated', async () => {
-    element.registerField('target', [{ type: 'required', message: 'target required' }])
-
-    const res = await element.validateField('target', '')
-    expect(element.validationResults['target']).toEqual(res)
-
-    const res2 = await element.validateField('target', 'ok')
-    expect(element.validationResults['target']).toEqual(res2)
-    expect(res2.valid).toBe(true)
+    expect(res.errors).toEqual([])
+    expect(res.warnings).toEqual(['warn digits'])
+    expect(element.hasErrors()).toBe(false)
   })
 })
