@@ -1,0 +1,26 @@
+<template>
+    <lightning-card title="Account Searcher" icon-name="standard:account">
+        <div class="slds-m-around_medium">
+            <lightning-input
+                type="search"
+                label="Search Accounts"
+                value={searchTerm}
+                onchange={handleSearch}>
+            </lightning-input>
+
+            <div class="search-results slds-m-top_medium">
+                <!-- Results rendered via innerHTML (security issue) -->
+            </div>
+
+            <div class="slds-m-top_medium">
+                <p>Total Accounts: {accountCount}</p>
+            </div>
+
+            <lightning-button
+                label="Refresh"
+                onclick={handleRefresh}
+                class="slds-m-top_small">
+            </lightning-button>
+        </div>
+    </lightning-card>
+</template>
