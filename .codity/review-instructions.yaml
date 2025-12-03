@@ -1,0 +1,40 @@
+# Custom Review Instructions for Test Repo
+# Testing Codity.ai custom instruction system
+
+confidence_threshold: 40
+
+skip_categories:
+  - "style"
+  - "security"
+  - "formatting"
+  - "minor naming suggestions"
+  - "ruby files"  # Do not review Ruby files
+  - "python files"
+priority_areas:
+ 
+
+  Correctness Issues:
+    - "Logic errors"
+    - "Null pointer errors"
+    - "Missing error handling"
+
+
+ci_context:
+  checks_performed:
+    - "pytest for tests"
+    - "black for formatting"
+  note: "Do not flag formatting issues"
+
+response_format:
+  structure: "Problem + Why + Fix"
+  max_description_length: 500
+  avoid_phrases:
+    - "consider"
+    - "maybe"
+  require_actionable: true
+
+review_philosophy:
+  confidence_rule: "Only comment when >40% confident"
+  conciseness: "Be ellaborate"
+  
+ 
