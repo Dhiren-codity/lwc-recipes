@@ -5,15 +5,13 @@ confidence_threshold: 40
 
 skip_categories:
   - "style"
+  - "security"
   - "formatting"
   - "minor naming suggestions"
   - "ruby files"  # Do not review Ruby files
   - "python files"
 priority_areas:
-  Security & Safety:
-    - "SQL injection risks"
-    - "Missing input validation"
-    - "Hardcoded credentials"
+ 
 
   Correctness Issues:
     - "Logic errors"
@@ -38,6 +36,5 @@ response_format:
 review_philosophy:
   confidence_rule: "Only comment when >40% confident"
   conciseness: "Be ellaborate"
-  actionability: "Focus on bugs and security"
-
+  
  
